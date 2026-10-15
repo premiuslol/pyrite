@@ -480,3 +480,46 @@ class TestEveryKindOfNewsIsFiledOnDev:
         proc, calls = fake_gh({**_result(), "incomplete": "timed out"}, open_issues, views)
         (comment,) = [c for c in calls if c[:2] == ["issue", "comment"]]
         assert comment[2] == "5" and "abc1234" in _body(comment)
+
+
+@pytest.mark.parametrize("location", ["body", "comment"])
+@pytest.mark.parametrize("test_name", ["test_x", "test_x[a-b]"])
+def test_bare_file_collection_failure_is_new_while_named_node_stays_filed(
+    tmp_path, gh_env, location, test_name
+):
+    """Issue #961: a file reference must not hide a new collection failure."""
+    file = "tests/test_a.py"
+    node = f"{file}::{test_name}"
+    text = f"Experimental tests in `{file}` newly failing:\n- `{node}`\n- `docs/example.py`"
+    issue = {
+        "number": 42,
+        "title": f"experimental-broken: {file}",
+        "body": text if location == "body" else "",
+        "comments": [{"body": text}] if location == "comment" else [],
+    }
+    junit = _junit(
+        tmp_path,
+        _case("", "tests.test_a", file, "error"),
+        _case("tests.test_a", test_name, file, "failed"),
+    )
+    known = _known(tmp_path, "# none")
+    output = tmp_path / "result.json"
+    make_env, calls = gh_env
+    proc = _run(
+        "check",
+        "--junit",
+        str(junit),
+        "--known",
+        str(known),
+        "--open-issues",
+        "--run-exit",
+        "1",
+        "--result-json",
+        str(output),
+        env=make_env(open_issues=[issue]),
+    )
+    result = json.loads(output.read_text())
+    assert proc.returncode == 1, proc.stdout
+    assert result["new"] == [file]
+    assert result["filed"] == {node: 42}
+    assert all(call[:2] == ["issue", "list"] for call in calls())

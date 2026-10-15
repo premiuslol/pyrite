@@ -172,7 +172,8 @@ def incompleteness(pytest_exit: str | None, junit: Path) -> str | None:
     return None
 
 
-_NAMED = re.compile(r"`([^`\s]+\.py(?:::[^`]*)?)`")
+# File references describe context; only a full node id acknowledges a failure.
+_NAMED = re.compile(r"`([^`\s]+\.py::[^`]+)`")
 
 
 def open_issue_tests() -> dict[str, int]:
